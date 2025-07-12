@@ -1,0 +1,159 @@
+#!/bin/bash
+
+USER_DATA="/tmp/oraysl.status"
+PHTUNNEL=`pidof phtunnel`
+
+start()
+{
+	if [ `whoami` != "root" ]; then
+		echo -e "\033[1;31m Please run with root permit, exit\033[0m"
+		exit
+	fi
+
+	systemctl start phtunnel.service 
+	echo "phtunnel service start success !"
+}
+
+status()
+{
+	if [ -z $PHTUNNEL ]; then
+		echo -e "\033[1;31mPhtunnel Service Is not working !\033[0m"
+	fi
+
+	snbuf=$(wget 127.0.0.1:16062/ora_service/getsn -T 3 -q -O - 2>/dev/null)
+	sta=`echo $snbuf | grep -oE 'status"(.?)\w+' | cut -d ":" -f 2`
+	SN=`echo $snbuf | grep -oE '"device_sn":"[^\"]+' | cut -d ":" -f 2 | sed 's/\"//g'`
+	if [ "$sta" = "1"  ]; then
+		STATUS="ONLINE ";
+	else
+		STATUS="OFFLINE";
+	fi
+	echo -e " \033[32m+--------------------------------------------------+\033[0m"
+	echo -e " \033[32m|          Oray PeanutHull Linux 5.1.0             |\033[0m"
+	echo -e " \033[32m+--------------------------------------------------+\033[0m"
+	echo -e " \033[32m|              Runstatus: $STATUS                  |\033[0m"
+	echo -e " \033[32m+--------------------------------------------------+\033[0m"
+	echo -e " \033[32m|              SN: $SN                |\033[0m"
+	echo -e " \033[32m+--------------------------------------------------+\033[0m"
+	echo -e " \033[32m|    Remote Management Address http://b.oray.com   |\033[0m"
+	echo -e " \033[32m+--------------------------------------------------+\033[0m"
+}
+
+stop()
+{
+	if [ `whoami` != "root" ]; then
+		echo -e "\033[1;31m Please run with root permit, exit\033[0m"
+		exit
+	fi
+
+	echo -e "\033[1;31mSure you want to stop Phtunnel Service ?(y/n)\033[0m"
+	read userinfo
+	if [ "$userinfo" = "y" ]; then
+		if [ $PHTUNNEL ]; then
+			systemctl stop phtunnel.service 
+		else
+			echo -e "\033[1;31mPhtunnel Service Is not Working"
+		fi
+		echo -e "\033[1;31mPhtunnel Service Already stopped !\033[0m"
+	else
+		echo -e "\033[1;31mStop Phtunnel Service failed, Try again!\033[0m"
+	fi
+}
+
+restart()
+{
+	if [ `whoami` != "root" ]; then
+		echo -e "\033[1;31m Please run with root permit, exit\033[0m"
+		exit
+	fi
+
+	systemctl restart phtunnel.service 
+	echo "restart phtunnel service success !"
+}
+
+reset()
+{
+	if [ `whoami` != "root" ]; then
+		echo -e "\033[1;31m Please run with root permit, exit\033[0m"
+		exit
+	fi
+
+	echo -e "\033[1;31mSure you want to reset it?(y/n)\033[0m"
+	read  userinfo
+	if [ "$userinfo" =  "y" ]; then 
+		snbuf=$(wget 127.0.0.1:16062/ora_service/getsn -T 3 -q -O - 2>/dev/null)
+		sn=`echo $snbuf | grep -oE '"device_sn(.?):"[^\"]+' | cut -d ":" -f 2 | sed 's/\"//g'`
+		pwd=`echo $snbuf | grep -oE '"device_sn_pwd(.?):"[^\"]+' | cut -d ":" -f 2 | sed 's/\"//g'`
+
+		mgrbuf=$(wget 127.0.0.1:16062/ora_service/getmgrurl -T 3 -q -O - 2>/dev/null)
+		account=`echo $mgrbuf | grep -oE '"account(.?):"[^\"]+' | cut -d ":" -f 2 | sed 's/\"//g'`
+
+		jsonstr=\{\"sn\"\:\"$sn\"\,\"password\":\"$pwd\"\}
+		statusbuf=`wget -T 10 --no-check-certificate -q --header 'Content-Type: application/json' --post-data $jsonstr hsk-embed.oray.com/device/authorization -O - 2>/dev/null`
+		auth=`echo $statusbuf | grep -oE '"auth(.?):"[^\"]+' | cut -d ":" -f 2 | sed 's/\"//g'`
+		password=`echo $statusbuf | grep -oE '"device_password(.?):"[^\"]+' | cut -d ":" -f 2 | sed 's/\"//g'`
+		timestamp=$(date +%s)
+
+		md5=$(echo -n $account$auth$timestamp | md5sum | grep -oE [a-z0-9]+)
+
+		resetjson=\{\"password\"\:\"$password\"\}
+		wget --no-check-certificate -T 3 --header="Authorization: Basic $sn.$timestamp.$md5" --header="Content-Type: application/json" --post-data $resetjson hsk-api-v2.oray.com/devices/$sn/reset -q -O -
+
+		rm -rf /etc/phtunnel.json
+		systemctl restart phtunnel.service 
+		echo -e "\033[1;31mreset success !\033[0m"
+	else
+		echo -e "\033[1;31mReset failed ! Try again\033[0m"
+	fi
+
+}
+version()
+{
+	echo -e "\033[1;31mOray PeanutHull DDNS 5.1.0\033[0m"
+}
+
+enable()
+{
+	if [ `whoami` != "root" ]; then
+		echo -e "\033[1;31m Please run with root permit, exit\033[0m"
+		exit
+	fi
+
+	systemctl enable phtunnel.service 
+	echo "phtunnel service is enabled !"
+}
+
+disable()
+{
+	if [ `whoami` != "root" ]; then
+		echo -e "\033[1;31m Please run with root permit, exit\033[0m"
+		exit
+	fi
+
+	systemctl disable phtunnel.service 
+	echo "phtunnel service is disabled !"
+}
+
+
+case "$1" in
+	"start")
+		start;;
+	"status")
+		status;;
+	"restart")
+		restart;;
+	"stop")
+		stop;;
+	"reset")
+		reset;;
+	"version")
+		version;;
+	"enable") 
+		enable;;
+	"disable")
+		disable;;
+	*)
+		echo "Phtunnel Serive called with  unknown argument"
+		echo "(phddns  |start|status|stop|restart|reset|enable|disable|version)"
+		exit 1;;
+esac
